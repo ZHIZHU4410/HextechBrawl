@@ -4,5 +4,9 @@ public static class BalanceRules
     public static int RewardLevel(int nativeLootLevel) => System.Math.Clamp(nativeLootLevel, 1, 27);
     public static double BindingDamage(int layers) => 1 + .04 * System.Math.Clamp(layers, 0, 25);
     public static double BindingSpeed(int layers) => 1 + .015 * System.Math.Clamp(layers, 0, 30);
+    public const double BoundDamageBoost = 2;
+    public static double BoundAttackMultiplier(bool bound, int layers) => bound ? BoundDamageBoost * BindingDamage(layers) : 1;
+    public static double DamagePenalty(double raw) => System.Math.Clamp(raw, .60, 1);
+    public static int ReforgeLevel(int nativeLevel, int existingLevel, int bonus) => System.Math.Min(30, System.Math.Max(RewardLevel(nativeLevel), existingLevel) + bonus);
     public const double VolleyDamage = .45;
 }

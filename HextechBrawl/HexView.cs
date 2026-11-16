@@ -97,7 +97,7 @@ internal sealed class HexView : IDisposable
     public void Choices(RunState state, int cursor, Action<int> choose, Action weapon, Action reroll, Action core, Action exit)
     {
         state.EnsureOffers();
-        string signature = string.Join(",", state.Offers) + ":" + state.Choices + ":" + state.OfferRerolls + ":" + state.TargetWeaponId + ":" + state.Notice + ":" + state.Wallet + ":" + string.Join(",", state.OfferWeapons) + ":" + state.OfferedBaseLevel;
+        string signature = string.Join(",", state.Offers) + ":" + state.Choices + ":" + state.OfferRerolls + ":" + state.TargetWeaponId + ":" + state.Notice + ":" + state.Wallet + ":" + string.Join(",", state.OfferWeapons) + ":" + state.OfferedBaseLevel + ":" + state.ReplacementQuality;
         focused = cursor;
         // 方向键移动仅改变焦点，不重新生成卡牌或重播入场动画。
         if (choiceMode && offerSignature == signature) return;
@@ -142,14 +142,18 @@ internal sealed class HexView : IDisposable
                 string weaponId = state.OfferWeapons[i];
                 WeaponPreview(card, weaponId, color);
                 Label(card, WeaponName(weaponId), 122, 99, color, .92, 196);
-                int level = Math.Min(30, state.OfferedBaseLevel + a.WeaponLevels);
-                Label(card, $"获得 Lv.{level} · 海克斯绑定", 122, 158, Muted, .80, 196);
+                state.CarriedBindings.TryGetValue(weaponId, out var bound);
+                int level = BalanceRules.ReforgeLevel(state.OfferedBaseLevel, bound?.Level ?? 0, a.WeaponLevels);
+                string quality = new[] { "普通", "+", "++", "S" }[Math.Clamp(bound?.Quality ?? state.ReplacementQuality, 0, 3)];
+                Label(card, bound == null ? $"获得 Lv.{level} {quality} · 伤害×2" : $"回炉 Lv.{level} {quality} · 保留{bound.Stacks}层", 122, 158, Muted, .75, 196);
                 Rect(card, 20, 189, 300, 1, 0x354653);
                 Label(card, a.Description, 20, 203, White, 1, 300);
             }
             string rank = state.Rank(a.Id) == 0 ? "新强化" : $"升级  {state.Rank(a.Id)} → {state.Rank(a.Id) + 1}";
             Label(card, rank + $"    /    上限 {(a.MaxRank == int.MaxValue ? "无限" : a.MaxRank)}", 20, 291, Muted);
-            bool canPay = RunState.SelectionError(a, state.Gold, state.Cells, state.Curse, true, state.OfferedBaseLevel).Length == 0;
+            int checkLevel = !state.OpeningPending && state.CarriedBindings.TryGetValue(state.OfferWeapons[i], out var carried)
+                ? Math.Max(state.OfferedBaseLevel, carried.Level) : state.OfferedBaseLevel;
+            bool canPay = RunState.SelectionError(a, state.Gold, state.Cells, state.Curse, true, checkLevel).Length == 0;
             Label(card, $"[{i + 1}] " + (state.OpeningPending ? "确立本局路线" : canPay ? "选择 / 契约会立即结算" : "资源或武器不足"), 20, 320, canPay ? color : 0xEF8B83, .86);
             var flash = new Node(card) { alpha = 0 };
             Rect(flash, 0, 0, 340, 348, color, .72);
@@ -283,7 +287,7 @@ internal sealed class HexView : IDisposable
         g.drawCircle(181, 263, 55, Ref<int>.In(6));
         g.endFill();
         Label(root, "Lv." + state.CoreLevel, 148, 250, Gold, 1.7);
-        Label(root, $"基础伤害成长 ×{state.Growth:0.00}\n基础生命成长 ×{state.LifeGrowth:0.00}\n击杀 {state.Kills}  /  首领 {state.Bosses}\n附加伤害 {state.BonusDamage:N0}\n累计治疗 {state.Healing:N0}", 52, 335, White, 1.05, 260);
+        Label(root, $"绑定伤害基准 ×2\n常驻代价 ×{state.DisplayDamagePenalty:0.00}\n核心伤害 ×{state.Growth:0.00}\n基础生命成长 ×{state.LifeGrowth:0.00}\n击杀 {state.Kills}  /  首领 {state.Bosses}\n附加伤害 {state.BonusDamage:N0}\n累计治疗 {state.Healing:N0}", 52, 335, White, 1.05, 260);
         Label(root, $"升级：{state.UpgradeCost} 碎片（{state.CoreUpgrades}/20）", 52, 464, Cyan);
         Label(root, "升级获得伤害/生命成长、1次重随；不治疗", 52, 488, Muted, .68);
         Rect(root, 350, 145, 738, 113, 0x12232F);

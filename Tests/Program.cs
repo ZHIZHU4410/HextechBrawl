@@ -24,6 +24,7 @@ for (uint seed = 1; seed <= 100; seed++)
         if (category == "melee") Check(!s.Offers.Contains("multishot"), "melee excludes ranged-only ability");
         for (int c = 0; c < s.Offers.Count; c++)
             if (s.Offers[c] == "multishot") Check(VolleyCompatibility.Kinds.Contains(s.OfferWeapons[c]) && WeaponPool.Get(s.OfferWeapons[c]).Group == 5, "multishot paired only with compatible ranged weapon");
+        Check(s.Offers.Any(id => { var a = Catalogue.ById[id]; return a.GoldCost == 0 && a.CellsCost == 0 && a.CurseCost == 0; }), "draft never forces currency or curse cost");
         Check(s.Offers.Count == 3 && s.OfferWeapons.Count == 3, "every hex card has weapon");
         Check(s.OfferWeapons.All(id => WeaponPool.Allows(WeaponPool.Get(id), color, category)), "strict color and exclusive category");
         Check(s.OfferWeapons.Distinct().Count() == 3, "distinct weapons per hand");
@@ -49,3 +50,29 @@ Check(BalanceRules.BindingDamage(1000) == 2 && BalanceRules.BindingSpeed(1000) =
 Check(System.Math.Abs(3 * BalanceRules.VolleyDamage - 1.35) < .00001, "shotgun has 45 percent per shot, 135 percent full hit");
 var growth = new RunState { Choices = 100 }; Check(growth.Growth < 3 && growth.LifeGrowth < 2, "no exponential automatic scaling alongside native scroll stats");
 Console.WriteLine("PASS additional balance and capability checks; total " + checks);
+
+for (int layers = 0; layers <= 100; layers++)
+{
+    Check(BalanceRules.BoundAttackMultiplier(true, layers) == 2 * BalanceRules.BindingDamage(layers), "bound baseline exactly doubles at all layer counts");
+    Check(BalanceRules.BoundAttackMultiplier(false, layers) == 1, "unbound attacks do not receive weapon boost");
+}
+Check(BalanceRules.DamagePenalty(.12) == .60 && BalanceRules.DamagePenalty(.85) == .85 && BalanceRules.DamagePenalty(1) == 1, "passive penalty floor preserves normal tradeoffs");
+Check(BalanceRules.ReforgeLevel(3, 12, 1) == 13 && BalanceRules.ReforgeLevel(12, 3, 2) == 14 && BalanceRules.ReforgeLevel(27, 29, 3) == 30, "reforge never downgrades old level and respects cap");
+foreach (string color in new[] { "Brutality", "Tactic", "Survival" })
+foreach (string category in new[] { "melee", "ranged" })
+{
+    var preferred = WeaponPool.All.First(w => WeaponPool.Allows(w, color, category)).Id;
+    var build = new RunState { WeaponColor = color, WeaponCategory = category, PreferredWeaponKind = preferred, Pending = 1, OpeningGranted = true };
+    build.EnsureOffers();
+    Check(build.OfferWeapons.Contains(preferred) && build.OfferWeapons.Distinct().Count() == 3, "new draft offers cultivation path without duplicate weapons");
+    var original = build.OfferWeapons.ToArray(); build.PreferredWeaponKind = ""; build.EnsureWeaponOffers();
+    Check(build.OfferWeapons.SequenceEqual(original), "changing selected slot cannot reroll saved candidate");
+}
+var costly = new RunState { Offers = ["forge_gold", "forge_cells", "gold_loan"] };
+costly.EnsureSafeOffer();
+Check(costly.Offers.Any(id => { var a = Catalogue.ById[id]; return a.GoldCost == 0 && a.CellsCost == 0 && a.CurseCost == 0; }), "all-cost hand repaired");
+var instance = new RunState { Choices = 3 }; instance.BindWeapon(17); instance.Choices = 8; instance.BindWeapon(17);
+Check(instance.BindingStacks(17) == 5, "reforging same instance preserves birth and accumulated layers");
+var restoredBuild = JsonSerializer.Deserialize<RunState>(JsonSerializer.Serialize(instance));
+Check(restoredBuild.BindingStacks(17) == 5, "reforged instance persistence");
+Console.WriteLine("PASS optimized roguelike checks; total " + checks);

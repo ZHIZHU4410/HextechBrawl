@@ -56,7 +56,8 @@ public sealed partial class Main
         if (outgoing)
         {
             var mob = (Mob)target;
-            double binding = BalanceRules.BindingDamage(State.BindingStacks(attack.sourceItem?.permanentId ?? attack.sourceWeapon?.item?.permanentId ?? -1));
+            var sourceItem = attack.sourceItem ?? attack.sourceWeapon?.item;
+            double binding = BalanceRules.BoundAttackMultiplier(Bound(sourceItem), State.BindingStacks(sourceItem?.permanentId ?? -1));
             double bonus = 1 + .30 * State.Rank("might") + .25 * State.Rank("end_power") + State.Rank("pact") + .40 * State.Rank("curse_power");
             if (State.Synergy(Family.Assault, 2)) bonus += .25;
             if (hero.life >= hero.maxLife * .90) bonus += .45 * State.Rank("focus");
@@ -70,7 +71,6 @@ public sealed partial class Main
             if (State.Rank("execute") > 0 && mob is Boss && mob.life < mob.maxLife * .30) bonus += 1;
             attack.dmgMultiplier *= Math.Min(100_000, State.Growth * bonus * binding * DamageTradeoff * (attack.sourceWeapon != null ?
                 State.IsRoute(Family.Assault) ? 1.15 : State.IsRoute(Family.Arcane) ? .90 : 1 : 1));
-            var sourceItem = attack.sourceItem ?? attack.sourceWeapon?.item;
             if (Bound(sourceItem))
             {
                 if (State.Rank("phase_wall") > 0) attack.dmgMultiplier *= .90;

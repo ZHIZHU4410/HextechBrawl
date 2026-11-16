@@ -1,11 +1,16 @@
 namespace HextechBrawl;
 
 /// <summary>仅存储可序列化的数据；不保存 Hashlink 对象、地址或委托。</summary>
+public sealed record BoundPreview(int Id, int Level, int Quality, int Stacks);
 public sealed class RunState
 {
     public int Version { get; set; } = 3;
     public string WeaponColor { get; set; } = "";
     public string WeaponCategory { get; set; } = "";
+    public string PreferredWeaponKind { get; set; } = "";
+    public Dictionary<string, BoundPreview> CarriedBindings { get; set; } = new();
+    public int ReplacementQuality { get; set; }
+    public double DisplayDamagePenalty { get; set; } = 1;
     public List<string> OfferWeapons { get; set; } = new();
     public Dictionary<int, int> BoundWeapons { get; set; } = new();
     public int BindingStacks(int permanentId) => BoundWeapons.TryGetValue(permanentId, out int since) ? Math.Max(0, Choices - since) : 0;
@@ -24,6 +29,12 @@ public sealed class RunState
             var available = matching.Where(w => !OfferWeapons.Contains(w.Id)).ToList();
             if (available.Count == 0) available = matching;
             OfferWeapons[i] = available[(int)(Next() % (uint)available.Count)].Id;
+        }
+        // 已保存候选不随W切换而重抽。仅在真正生成新候选时保留一条培养路线。
+        if (PreferredWeaponKind.Length > 0 && pool.Any(w => w.Id == PreferredWeaponKind) && !OfferWeapons.Contains(PreferredWeaponKind))
+        {
+            int slot = Offers.FindIndex(id => id != "multishot");
+            if (slot >= 0) OfferWeapons[slot] = PreferredWeaponKind;
         }
     }
     public bool OpeningGranted { get; set; }
@@ -147,6 +158,14 @@ public sealed class RunState
             var a = pool[(int)(Next() % (uint)pool.Count)];
             Offers.Add(a.Id);
         }
+        EnsureSafeOffer();
+    }
+    public void EnsureSafeOffer()
+    {
+        static bool NoEntryCost(Augment a) => a.GoldCost == 0 && a.CellsCost == 0 && a.CurseCost == 0;
+        if (Offers.Any(id => NoEntryCost(Catalogue.ById[id]))) return;
+        var safe = Catalogue.All.Concat(Catalogue.Endless).Where(a => NoEntryCost(a) && Rank(a.Id) < a.MaxRank && !Offers.Contains(a.Id)).ToList();
+        if (safe.Count > 0) Offers[^1] = safe[(int)(Next() % (uint)safe.Count)].Id;
     }
     public bool Reroll()
     {

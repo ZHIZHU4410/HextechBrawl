@@ -1,5 +1,15 @@
 # Changes
 
+## 3.2.0
+- Doubled direct attack damage for bound weapons, once at the attack boundary.
+- Offered a carried bound weapon as a continued cultivation path where possible.
+- Reforged carried bound duplicates in place, preserving instance identity, layers and affixes.
+- Inherited normal forge quality for new weapon types (up to S), without copying legendary or other affixes.
+- Kept at least one no-entry-cost option per newly generated draft.
+- Capped combined passive damage penalties at a 0.60 multiplier; wall/volley tradeoffs remain separate.
+- Added card previews for reforging, quality and level, plus core damage/penalty status.
+- Passed 108,289 rule checks; runtime balance and equipment integration remain pending user testing.
+
 ## 3.1.0
 - Added phase-wall augment for bound melee hit checks and native projectiles, with a damage tradeoff.
 - Added compatible native ranged volleys: three groups at 45% damage per projectile, limited to the ranged pool.
