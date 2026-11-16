@@ -1,0 +1,2 @@
+namespace HextechBrawl;
+public static class VolleyCompatibility { public static readonly HashSet<string> Kinds = new() { "BarrelLauncher", "AlchemicGun", "CloseCombatBow", "CrossBow", "DualBow", "ExplosiveCrossBow", "FastBow", "FrostBow", "FrostCrossBow", "FrostCrossBowOffHand", "HeavyBow", "InfiniteBow", "LongBow", "MagicBow", "MarkBow", "MultiCrossBow", "MultiCrossBowOffHand", "PreciseBow", "SonicCrossbow", "StartBow", "LanternRanged", "ThrowingTorch" }; }

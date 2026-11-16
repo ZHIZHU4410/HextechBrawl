@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>disable</Nullable>
+    <ModType>mod</ModType><ModMain>HextechBrawl.Main</ModMain><Version>3.1.0</Version>
+    <AutoInstallMod>true</AutoInstallMod><GenerateDiffCDB>false</GenerateDiffCDB><GenerateSinglePakFile>false</GenerateSinglePakFile><GameVersion>35</GameVersion>
+  </PropertyGroup>
+  <ItemGroup><PackageReference Include="DeadCellsCoreModding.MDK" Version="1.0.1" /><OutputFiles Include="../README.md" /></ItemGroup>
+</Project>

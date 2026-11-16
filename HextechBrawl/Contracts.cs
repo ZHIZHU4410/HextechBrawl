@@ -1,0 +1,107 @@
+using dc.en;
+using dc.tool;
+using HaxeProxy.Runtime;
+using ModCore.Utilities;
+using Math = System.Math;
+
+namespace HextechBrawl;
+
+public sealed partial class Main
+{
+    private List<InventItem> CarriedWeapons(Hero hero)
+    {
+        var items = new[] { hero.inventory.getEquippedWeaponOn(0), hero.inventory.getEquippedWeaponOn(1), hero.inventory.getBackpackWeapon() };
+        return items.Where(i => i != null && i.kind is InventItemKind.Weapon).DistinctBy(i => i.permanentId).ToList();
+    }
+    private void RefreshWallet(Hero hero)
+    {
+        var weapons = CarriedWeapons(hero);
+        var target = weapons.FirstOrDefault(i => i.permanentId == State.TargetWeaponId) ?? weapons.FirstOrDefault();
+        State.TargetWeaponId = target?.permanentId ?? -1;
+        State.TargetWeaponLevel = target?.getRawItemLevel() ?? 0;
+        State.TargetWeaponLabel = target == null ? "无武器：请先装备" :
+            (target._itemData?.name == null ? "武器" : dc.Lang.Class.t.get(target._itemData.name, null).ToString()) + " Lv." + target.getRawItemLevel();
+        int nativeLevel = hero._level.game.isBossRush() ? hero._level.game.bossRush.getItemLevel() : hero._level.map.lootLevel;
+        State.OfferedBaseLevel = BalanceRules.RewardLevel(nativeLevel);
+        State.Gold = hero._level.game.data.money; State.Cells = hero.cells; State.Curse = hero.curseCounter;
+        State.Wallet = $"金币 {hero._level.game.data.money}   细胞 {hero.cells}   诅咒 {hero.curseCounter}";
+    }
+    private void CycleWeapon()
+    {
+        if (view == null || view.Selecting || State.OpeningPending) return;
+        var weapons = CarriedWeapons(pausedGame.hero);
+        if (weapons.Count == 0) return;
+        int index = weapons.FindIndex(i => i.permanentId == State.TargetWeaponId);
+        State.TargetWeaponId = weapons[(index + 1) % weapons.Count].permanentId;
+        State.Notice = ""; RefreshWallet(pausedGame.hero); Redraw();
+    }
+    private bool ApplySelection(int index, Hero hero)
+    {
+        if (index < 0 || index >= State.Offers.Count) return false;
+        var a = Catalogue.ById[State.Offers[index]];
+        var target = CarriedWeapons(hero).FirstOrDefault(i => i.permanentId == State.TargetWeaponId);
+        bool reward = !State.OpeningPending;
+        State.EnsureWeaponOffers();
+        string weaponId = reward && index < State.OfferWeapons.Count ? State.OfferWeapons[index] : "";
+        var entry = WeaponPool.Get(weaponId);
+        int baseLevel = State.OfferedBaseLevel;
+        if (reward && (entry == null || !WeaponPool.Allows(entry, State.WeaponColor, State.WeaponCategory)))
+        { State.Notice = "目标武器不符合本局池，请重随。"; view.Reject(); Redraw(); return false; }
+        if (reward && target?.pairedItem != null)
+        { State.Notice = "请先卸下双槽武器，或用W指定另一替换位置。"; view.Reject(); Redraw(); return false; }
+        string error = RunState.SelectionError(a, hero._level.game.data.money, hero.cells, hero.curseCounter,
+            true, baseLevel);
+        if (error.Length > 0)
+        {
+            State.Notice = error + "；未扣费，可选其他卡或重随。";
+            view.Reject(); Redraw(); return false;
+        }
+        // 先准备属性物品、确认目标/余额，再结算。直接入库存，避免再次进入卷轴奖励Hook。
+        var stats = new List<InventItem>();
+        if (reward)
+        {
+            string mainStat = State.WeaponColor == "Brutality" ? "BrutalityUp" : State.WeaponColor == "Tactic" ? "TacticUp" : "SurvivalUp";
+            stats.Add(InventItem.Class.fromItem.Invoke(mainStat.AsHaxeString(), null));
+        }
+        for (int n = 0; n < a.AllStats; n++)
+            foreach (string id in new[] { "BrutalityUp", "TacticUp", "SurvivalUp" })
+                stats.Add(InventItem.Class.fromItem.Invoke(id.AsHaxeString(), null));
+        var acquired = reward ? InventItem.Class.fromItem.Invoke(weaponId.AsHaxeString(), baseLevel) : null;
+        if (!State.Choose(index)) return false;
+        if (reward)
+        {
+            if (target == null) hero.inventory.add(acquired);
+            else
+            {
+                hero.inventory.replace(target, acquired);
+                target.posID = -1;
+                var oldDrop = new dc.en.inter.ItemDrop(hero._level, hero.cx, hero.cy, target, true, Ref<bool>.In(false));
+                oldDrop.init(); oldDrop.onDropAsLoot();
+            }
+            State.BindWeapon(acquired.permanentId);
+        }
+        if (a.GoldCost > 0) hero.substractMoney(a.GoldCost, Ref<bool>.In(false));
+        if (a.CellsCost > 0) hero.substractCells(a.CellsCost, Ref<bool>.In(false));
+        if (a.CurseCost > 0) hero.curse(a.CurseCost, "海克斯契约".AsHaxeString(), Ref<bool>.In(true), Ref<bool>.In(false));
+        if (a.WeaponLevels > 0)
+        {
+            acquired.setItemLevel(Math.Min(30, acquired.getRawItemLevel() + a.WeaponLevels));
+        }
+        foreach (var stat in stats) hero.inventory.add(stat);
+        if (a.Id == "gold_loan") hero.addMoney(1000, Ref<bool>.In(false));
+        if (a.Id == "soul_debt") hero.addCells(30, Ref<bool>.In(false));
+        if (a.Id == "purify") hero.reduceCurse(10);
+        if (stats.Count > 0 || reward)
+            hero.onEquipedItemsChange(Ref<bool>.In(true), Ref<bool>.In(false), Ref<bool>.In(false));
+        State.Notice = "";
+        return true;
+    }
+    private void OnHealing(Hook_Hero.orig_heal orig, Hero hero, int amount)
+    {
+        if (amount > 0 && EnsureRun(hero)) amount = (int)(amount * Math.Pow(.75, State.Rank("soul_debt")));
+        orig(hero, amount);
+    }
+    private double DamageTradeoff => Math.Pow(.85, State.Rank("haste")) * Math.Pow(.90, State.Rank("vitality")) *
+        Math.Pow(.92, State.Rank("leech")) * Math.Pow(.95, State.Rank("purify")) *
+        (State.IsRoute(Family.Hunt) || State.IsRoute(Family.Fortune) ? .90 : 1);
+}
