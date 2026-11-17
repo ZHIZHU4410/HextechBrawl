@@ -6,6 +6,11 @@ public sealed record Augment(string Id, string Name, int Rarity, Family Family, 
 /// <summary>说明中的数值均为每级收益。羁绊按不同强化种类计数，升级同一强化不重复计数。</summary>
 public static class Catalogue
 {
+    public static readonly HashSet<string> MechanicIds = new()
+    {
+        "double", "execute", "thorns", "bulwark", "rebirth", "spark", "frost", "nova", "inferno",
+        "overload", "echo", "leech", "hemorrhage", "vampire", "rhythm", "predator", "phase_wall", "multishot"
+    };
     public static readonly string[] Families = ["征服", "壁垒", "奥术", "血契", "猎杀", "财富"];
     public static readonly string[] Rarities = ["", "白银", "黄金", "棱彩"];
     public static readonly string[] Synergies = [

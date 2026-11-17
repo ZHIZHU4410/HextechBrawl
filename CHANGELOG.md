@@ -1,5 +1,14 @@
 # Changes
 
+## 3.3.0
+- Removed the mandatory forge card from every draft; forging now has a 25% insertion attempt and a cooldown after selection.
+- Shuffled augment positions and independently randomized the cultivation weapon slot.
+- Preferred unseen and recent-history-excluded augments while retaining route and rarity preferences.
+- Guaranteed a combat mechanic whenever the eligible mechanic pool is not exhausted.
+- Preserved saved current offers and native item affixes; no free reroll on load or slot switch.
+- Passed 116,642 checks. Regression sample: 2,000 cultivation hands, 363 forge hands, mean 18.75 distinct effects over 20 cultivation selections.
+- New distribution has not been evaluated in game; user gameplay testing remains pending.
+
 ## 3.2.0
 - Doubled direct attack damage for bound weapons, once at the attack boundary.
 - Offered a carried bound weapon as a continued cultivation path where possible.

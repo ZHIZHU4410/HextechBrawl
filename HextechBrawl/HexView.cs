@@ -162,7 +162,7 @@ internal sealed class HexView : IDisposable
             hit.onOut = new HlAction<Event>(e => { if (hovered == index) hovered = -1; e.propagate = false; });
             cards.Add(new CardVisual(motion, glow, focus, flash, i, a.Rarity));
         }
-        Label(root, state.OpeningPending ? "开局颜色与分类不消耗正式卷轴，选择后本局锁定。盾牌没有第三类。" : $"第 {state.Choices + 1} 次选择  ·  每5次强化保底棱彩池（锻造单独随机）  ·  重随 {state.OfferRerolls}/3", 34, 519, Muted);
+        Label(root, state.OpeningPending ? "开局颜色与分类不消耗正式卷轴，选择后本局锁定。盾牌没有第三类。" : $"第 {state.Choices + 1} 次选择  ·  机制优先 · 锻造低频 · 列位随机  ·  重随 {state.OfferRerolls}/3", 34, 519, Muted);
         Button("[R] 重随三项", 34, 555, 180, reroll, !state.OpeningPending && state.Rerolls > 0 && state.OfferRerolls < 3);
         Button("[Tab] 海克斯核心", 230, 555, 220, core);
         Button("[Esc] 暂存选择", 868, 555, 220, exit);

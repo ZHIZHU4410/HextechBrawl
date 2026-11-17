@@ -43,7 +43,7 @@ public sealed partial class Main(ModInfo info) : ModBase(info), IOnFrameUpdate, 
         Hook_Hero.heal += OnHealing;
         Hook_Weapon.prepare += OnPrepare;
         Hook__AttackUtils.hit += OnHit;
-        Logger.Information("[HextechBrawl] v3.2.0 loaded: double bound damage; reforge and safe choices; phase/volley; native loot scaling; weapon icon previews and bound weapon pools; F6 core, 1/2/3 select, R reroll");
+        Logger.Information("[HextechBrawl] v3.3.0 loaded: diverse drafts and independent cultivation; double bound damage; reforge and safe choices; phase/volley; native loot scaling; weapon icon previews and bound weapon pools; F6 core, 1/2/3 select, R reroll");
     }
 
     private bool EnsureRun(Hero hero)

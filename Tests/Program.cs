@@ -76,3 +76,36 @@ Check(instance.BindingStacks(17) == 5, "reforging same instance preserves birth 
 var restoredBuild = JsonSerializer.Deserialize<RunState>(JsonSerializer.Serialize(instance));
 Check(restoredBuild.BindingStacks(17) == 5, "reforged instance persistence");
 Console.WriteLine("PASS optimized roguelike checks; total " + checks);
+
+int varietyHands = 0, varietyForges = 0, distinctSum = 0;
+var cultivationColumns = new HashSet<int>();
+for (uint seed = 1; seed <= 100; seed++)
+{
+    // 重现玩家已经选过一次金币锻造，然后始终继续培养同一把武器的路径。
+    var draft = new RunState { RandomState = seed, WeaponColor = "Brutality", WeaponCategory = "melee", Route = "route_assault",
+        PreferredWeaponKind = "QuickSword", OpeningGranted = true, Choices = 1, LastForgeChoice = 1,
+        Ranks = new() { ["forge_gold"] = 1 }, RecentChoices = new() { "forge_gold" } };
+    var seen = new HashSet<string>();
+    for (int turn = 0; turn < 20; turn++)
+    {
+        draft.Pending++; draft.EnsureOffers(); varietyHands++;
+        int forgeCount = draft.Offers.Count(id => Catalogue.ById[id].WeaponLevels > 0);
+        Check(forgeCount <= 1, "at most one forge per draft");
+        if (turn < 2) Check(forgeCount == 0, "forge selection followed by two normal choices without forging");
+        if (forgeCount > 0) varietyForges++;
+        Check(draft.Offers.Any(id => Catalogue.MechanicIds.Contains(id)), "unexhausted draft offers a combat mechanic");
+        int slot = draft.OfferWeapons.IndexOf("QuickSword");
+        Check(slot >= 0, "cultivation weapon remains available while augments vary");
+        cultivationColumns.Add(slot);
+        string selected = draft.Offers[slot]; seen.Add(selected);
+        var copy = JsonSerializer.Deserialize<RunState>(JsonSerializer.Serialize(draft));
+        Check(copy.RecentOffers.SequenceEqual(draft.RecentOffers) && copy.RecentChoices.SequenceEqual(draft.RecentChoices) && copy.LastForgeChoice == draft.LastForgeChoice,
+            "draft variety history persists across load");
+        draft.Choose(slot);
+    }
+    Check(seen.Count >= 7, "same weapon cultivation still receives diverse augment effects");
+    distinctSum += seen.Count;
+}
+Check(cultivationColumns.SetEquals(new[] { 0, 1, 2 }), "cultivation weapon is not pinned to column one");
+Check(varietyForges < varietyHands * .40, "forges are occasional choices instead of every-hand template");
+Console.WriteLine($"PASS variety regression: {varietyHands} cultivation hands, {varietyForges} forge hands, mean {distinctSum / 100d:0.00} distinct selected effects per 20 choices, all 3 cultivation positions; total {checks}");

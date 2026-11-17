@@ -5,6 +5,9 @@ public sealed record BoundPreview(int Id, int Level, int Quality, int Stacks);
 public sealed class RunState
 {
     public int Version { get; set; } = 3;
+    public List<string> RecentOffers { get; set; } = new();
+    public List<string> RecentChoices { get; set; } = new();
+    public int LastForgeChoice { get; set; } = -100;
     public string WeaponColor { get; set; } = "";
     public string WeaponCategory { get; set; } = "";
     public string PreferredWeaponKind { get; set; } = "";
@@ -33,8 +36,9 @@ public sealed class RunState
         // 已保存候选不随W切换而重抽。仅在真正生成新候选时保留一条培养路线。
         if (PreferredWeaponKind.Length > 0 && pool.Any(w => w.Id == PreferredWeaponKind) && !OfferWeapons.Contains(PreferredWeaponKind))
         {
-            int slot = Offers.FindIndex(id => id != "multishot");
-            if (slot >= 0) OfferWeapons[slot] = PreferredWeaponKind;
+            var slots = Enumerable.Range(0, Offers.Count).Where(i => Offers[i] != "multishot" ||
+                VolleyCompatibility.Kinds.Contains(PreferredWeaponKind) && WeaponPool.Get(PreferredWeaponKind).Group == 5).ToArray();
+            if (slots.Length > 0) OfferWeapons[slots[(int)(Next() % (uint)slots.Length)]] = PreferredWeaponKind;
         }
     }
     public bool OpeningGranted { get; set; }
@@ -132,33 +136,58 @@ public sealed class RunState
     }
     private void FillOffers(HashSet<string> avoid)
     {
-        var eligible = Catalogue.All.Concat(Catalogue.Abilities.Where(a => a.Id != "multishot" || WeaponCategory == "ranged")).Concat(Catalogue.Contracts.Where(a => a.WeaponLevels == 0)).Where(a => Rank(a.Id) < a.MaxRank).ToList();
-        var preferred = eligible.Where(a => a.Rarity == OfferRarity).ToList();
-        // 有足够替换项时，重随不会再抽到上一手；同品质池耗尽后允许向其他品质补齐。
-        if (preferred.Count(a => !avoid.Contains(a.Id)) >= 3) preferred.RemoveAll(a => avoid.Contains(a.Id));
+        var eligible = Catalogue.All.Concat(Catalogue.Abilities.Where(a => a.Id != "multishot" || WeaponCategory == "ranged"))
+            .Concat(Catalogue.Contracts.Where(a => a.WeaponLevels == 0)).Where(a => Rank(a.Id) < a.MaxRank).ToList();
+        var recent = RecentOffers.Concat(RecentChoices).Concat(avoid).ToHashSet();
         Offers.Clear(); OfferWeapons.Clear();
-        // 每轮一个锻造选项，另外两项保留职业内与跨职业的选择空间。
-        var forges = Catalogue.Contracts.Where(a => a.WeaponLevels > 0 && Rank(a.Id) < a.MaxRank).ToArray();
-        if (forges.Length > 0) Offers.Add(forges[(int)(Next() % (uint)forges.Length)].Id);
+        Augment Pick(List<Augment> candidates)
+        {
+            var fresh = candidates.Where(a => !recent.Contains(a.Id)).ToList();
+            if (fresh.Count == 0) fresh = candidates.Where(a => !RecentChoices.Contains(a.Id)).ToList();
+            if (fresh.Count == 0) fresh = candidates;
+            var tier = fresh.Where(a => a.Rarity == OfferRarity).ToList();
+            if (tier.Count > 0) fresh = tier;
+            var families = Offers.Select(id => Catalogue.ById[id].Family).ToHashSet();
+            var different = fresh.Where(a => !families.Contains(a.Family)).ToList();
+            if (different.Count > 0) fresh = different;
+            if (Chance(.65))
+            {
+                var unowned = fresh.Where(a => Rank(a.Id) == 0).ToList();
+                if (unowned.Count > 0) fresh = unowned;
+            }
+            if (Chance(.65))
+            {
+                var aligned = fresh.Where(a => IsRoute(a.Family)).ToList();
+                if (aligned.Count > 0) fresh = aligned;
+            }
+            return fresh[(int)(Next() % (uint)fresh.Count)];
+        }
+        // 锻造仅25%尝试加入且最多一张，选过锻造后至少两次普通选择不再出现。
+        if (Choices - LastForgeChoice >= 2 && Chance(.25))
+        {
+            var forges = Catalogue.Contracts.Where(a => a.WeaponLevels > 0 && Rank(a.Id) < a.MaxRank).ToList();
+            if (forges.Count > 0) Offers.Add(Pick(forges).Id);
+        }
         while (Offers.Count < 3)
         {
-            var pool = preferred.Where(a => !Offers.Contains(a.Id)).ToList();
-            if (pool.Count == 0) pool = eligible.Where(a => !Offers.Contains(a.Id)).ToList();
-            if (pool.Count == 0) pool = Catalogue.Endless.Where(a => !Offers.Contains(a.Id)).ToList();
-            if (Route.Length > 0 && Offers.Count == 1 && Chance(.70))
+            var candidates = eligible.Where(a => !Offers.Contains(a.Id)).ToList();
+            if (candidates.Count == 0) candidates = Catalogue.Endless.Where(a => !Offers.Contains(a.Id)).ToList();
+            // 机制池仍有候选时，每手至少一项真实战斗机制，而非三项平铺数值/卷轴。
+            if (!Offers.Any(id => Catalogue.MechanicIds.Contains(id)))
             {
-                var aligned = eligible.Where(a => IsRoute(a.Family) && !Offers.Contains(a.Id)).ToList();
-                if (aligned.Count > 0) pool = aligned;
+                var mechanics = candidates.Where(a => Catalogue.MechanicIds.Contains(a.Id)).ToList();
+                if (mechanics.Count > 0) candidates = mechanics;
             }
-            if (Route.Length > 0 && Offers.Count == 2)
-            {
-                var outside = pool.Where(a => !IsRoute(a.Family)).ToList();
-                if (outside.Count > 0) pool = outside;
-            }
-            var a = pool[(int)(Next() % (uint)pool.Count)];
-            Offers.Add(a.Id);
+            Offers.Add(Pick(candidates).Id);
         }
         EnsureSafeOffer();
+        // 培养武器与海克斯效果独立；洗牌避免任何列成为固定锻造/升级位。
+        for (int i = Offers.Count - 1; i > 0; i--)
+        {
+            int j = (int)(Next() % (uint)(i + 1));
+            (Offers[i], Offers[j]) = (Offers[j], Offers[i]);
+        }
+        RecentOffers = RecentOffers.Concat(Offers).TakeLast(6).ToList();
     }
     public void EnsureSafeOffer()
     {
@@ -194,6 +223,8 @@ public sealed class RunState
             Offers = ParkedOffers; OfferRarity = ParkedRarity; OfferRerolls = ParkedRerolls;
             ParkedOffers = new(); Notice = ""; return true;
         }
+        if (a.WeaponLevels > 0) LastForgeChoice = Choices + 1;
+        RecentChoices = RecentChoices.Append(id).TakeLast(2).ToList();
         Ranks[id] = Rank(id) + 1;
         Choices++; Pending--; Offers.Clear(); OfferWeapons.Clear(); OfferRarity = OfferRerolls = 0;
         if (Choices % 4 == 0) { Rerolls++; Shards += 10; }
