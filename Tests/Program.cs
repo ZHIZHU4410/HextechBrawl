@@ -33,9 +33,9 @@ for (uint seed = 1; seed <= 100; seed++)
         if (n % 3 == 0 && s.Rerolls > 0) Check(s.Reroll() && s.OfferWeapons.All(id => WeaponPool.Allows(WeaponPool.Get(id), color, category)), "reroll stays in pool");
         int oldStacks = n > 1 ? s.BindingStacks(1) : 0;
         s.Choose((int)(s.Next() % 3)); s.BindWeapon(n);
-        Check(s.BindingStacks(n) == 0, "new weapon begins at zero subsequent choices");
+        Check(s.BindingStacks(n) == s.Choices, "new weapon inherits full run growth");
         if (n > 1) Check(s.BindingStacks(1) == oldStacks + 1, "old bound weapon grows after every choice");
-        s.BindWeapon(n); Check(s.BindingStacks(n) == 0, "duplicate bind cannot reset growth");
+        s.BindWeapon(n); Check(s.BindingStacks(n) == s.Choices, "duplicate bind cannot alter shared growth");
         Check(s.WeaponColor == color && s.WeaponCategory == category, "pool remains locked");
     }
 }
@@ -57,14 +57,15 @@ for (int layers = 0; layers <= 100; layers++)
     Check(BalanceRules.BoundAttackMultiplier(false, layers) == 1, "unbound attacks do not receive weapon boost");
 }
 Check(BalanceRules.DamagePenalty(.12) == .60 && BalanceRules.DamagePenalty(.85) == .85 && BalanceRules.DamagePenalty(1) == 1, "passive penalty floor preserves normal tradeoffs");
-Check(BalanceRules.ReforgeLevel(3, 12, 1) == 13 && BalanceRules.ReforgeLevel(12, 3, 2) == 14 && BalanceRules.ReforgeLevel(27, 29, 3) == 30, "reforge never downgrades old level and respects cap");
 foreach (string color in new[] { "Brutality", "Tactic", "Survival" })
 foreach (string category in new[] { "melee", "ranged" })
 {
-    var preferred = WeaponPool.All.First(w => WeaponPool.Allows(w, color, category)).Id;
-    var build = new RunState { WeaponColor = color, WeaponCategory = category, PreferredWeaponKind = preferred, Pending = 1, OpeningGranted = true };
+    var carried = WeaponPool.All.Where(w => WeaponPool.Allows(w, color, category)).Take(3).ToArray();
+    var build = new RunState { WeaponColor = color, WeaponCategory = category, PreferredWeaponKind = carried[0].Id, Pending = 1, OpeningGranted = true };
+    foreach (var w in carried) build.CarriedBindings[w.Id] = new BoundPreview(1, 12, 3, 15);
     build.EnsureOffers();
-    Check(build.OfferWeapons.Contains(preferred) && build.OfferWeapons.Distinct().Count() == 3, "new draft offers cultivation path without duplicate weapons");
+    Check(build.OfferWeapons.Count(id => !build.CarriedBindings.ContainsKey(id)) >= 2, "draft provides at least two switch opportunities");
+    Check(build.OfferWeapons.Distinct().Count() == 3, "switch candidates stay distinct");
     var original = build.OfferWeapons.ToArray(); build.PreferredWeaponKind = ""; build.EnsureWeaponOffers();
     Check(build.OfferWeapons.SequenceEqual(original), "changing selected slot cannot reroll saved candidate");
 }
@@ -72,40 +73,60 @@ var costly = new RunState { Offers = ["forge_gold", "forge_cells", "gold_loan"] 
 costly.EnsureSafeOffer();
 Check(costly.Offers.Any(id => { var a = Catalogue.ById[id]; return a.GoldCost == 0 && a.CellsCost == 0 && a.CurseCost == 0; }), "all-cost hand repaired");
 var instance = new RunState { Choices = 3 }; instance.BindWeapon(17); instance.Choices = 8; instance.BindWeapon(17);
-Check(instance.BindingStacks(17) == 5, "reforging same instance preserves birth and accumulated layers");
+Check(instance.BindingStacks(17) == 8, "reforging same instance preserves birth and accumulated layers");
 var restoredBuild = JsonSerializer.Deserialize<RunState>(JsonSerializer.Serialize(instance));
-Check(restoredBuild.BindingStacks(17) == 5, "reforged instance persistence");
+Check(restoredBuild.BindingStacks(17) == 8, "reforged instance persistence");
 Console.WriteLine("PASS optimized roguelike checks; total " + checks);
 
-int varietyHands = 0, varietyForges = 0, distinctSum = 0;
-var cultivationColumns = new HashSet<int>();
+
+var progress = new RunState { Choices = 18, OfferedBaseLevel = 10 };
+progress.BindWeapon(10);
+int oldLayers = progress.BindingStacks(10);
+progress.BindWeapon(20);
+Check(progress.BindingStacks(20) == oldLayers && BalanceRules.BoundAttackMultiplier(true, progress.BindingStacks(20)) == BalanceRules.BoundAttackMultiplier(true, oldLayers), "switching carries exactly equal mastery multiplier");
+Check(progress.BindingStacks(99) == 0, "unbound world weapon does not inherit core bonus");
+progress.RefreshArsenal(14, 3);
+Check(progress.RewardItemLevel() == 14 && progress.ArsenalQuality == 3, "earned level and normal quality are shared with future rewards");
+progress.Pending = 1; progress.Offers = new() { "forge_gold", "might", "focus" };
+Check(progress.Choose(0) && progress.SharedForgeTier == 1, "first forge raises shared tier");
+int stable = progress.RewardItemLevel();
+for (int i = 0; i < 20; i++)
+{
+    progress.Pending = 1; progress.Offers = new() { "forge_gold", "might", "focus" };
+    Check(!progress.Choose(0) && progress.RewardItemLevel() == stable, "repeated same forge cannot compound level or consume choice");
+}
+progress.Pending = 1; progress.Offers = new() { "forge_curse", "might", "focus" };
+Check(progress.Choose(0) && progress.SharedForgeTier == 3 && progress.RewardItemLevel() == 14, "forge tier is absolute, not added to old weapon level");
+progress.Pending = 1; progress.Offers = new() { "forge_cells", "might", "focus" };
+Check(!progress.Choose(0), "lower forge tier cannot be farmed after skipping upward");
+var legacy = new RunState { Choices = 20, OfferedBaseLevel = 5, Ranks = new() { ["forge_gold"] = 8 } };
+legacy.RefreshArsenal(27, 3);
+Check(legacy.SharedForgeTier == 1 && legacy.RewardItemLevel() == 27, "legacy high level becomes arsenal floor without nerf or exclusive advantage");
+var loaded = JsonSerializer.Deserialize<RunState>(JsonSerializer.Serialize(progress));
+Check(loaded.SharedForgeTier == 3 && loaded.RewardItemLevel() == progress.RewardItemLevel() && loaded.ArsenalQuality == 3, "shared arsenal persists");
+var fixedMap = new RunState { OfferedBaseLevel = 10, SharedForgeTier = 3 };
+for (int turn = 0; turn < 50; turn++)
+{
+    fixedMap.Choices++;
+    fixedMap.RefreshArsenal(fixedMap.RewardItemLevel(), 2);
+    Check(fixedMap.RewardItemLevel() == 13, "repeated choices at fixed depth cannot repeatedly add forge bonus");
+}
+int hands = 0, switches = 0;
 for (uint seed = 1; seed <= 100; seed++)
 {
-    // 重现玩家已经选过一次金币锻造，然后始终继续培养同一把武器的路径。
-    var draft = new RunState { RandomState = seed, WeaponColor = "Brutality", WeaponCategory = "melee", Route = "route_assault",
-        PreferredWeaponKind = "QuickSword", OpeningGranted = true, Choices = 1, LastForgeChoice = 1,
-        Ranks = new() { ["forge_gold"] = 1 }, RecentChoices = new() { "forge_gold" } };
+    var draft = new RunState { RandomState = seed, WeaponColor = "Brutality", WeaponCategory = "melee", Route = "route_assault", OpeningGranted = true };
     var seen = new HashSet<string>();
     for (int turn = 0; turn < 20; turn++)
     {
-        draft.Pending++; draft.EnsureOffers(); varietyHands++;
-        int forgeCount = draft.Offers.Count(id => Catalogue.ById[id].WeaponLevels > 0);
-        Check(forgeCount <= 1, "at most one forge per draft");
-        if (turn < 2) Check(forgeCount == 0, "forge selection followed by two normal choices without forging");
-        if (forgeCount > 0) varietyForges++;
-        Check(draft.Offers.Any(id => Catalogue.MechanicIds.Contains(id)), "unexhausted draft offers a combat mechanic");
-        int slot = draft.OfferWeapons.IndexOf("QuickSword");
-        Check(slot >= 0, "cultivation weapon remains available while augments vary");
-        cultivationColumns.Add(slot);
-        string selected = draft.Offers[slot]; seen.Add(selected);
-        var copy = JsonSerializer.Deserialize<RunState>(JsonSerializer.Serialize(draft));
-        Check(copy.RecentOffers.SequenceEqual(draft.RecentOffers) && copy.RecentChoices.SequenceEqual(draft.RecentChoices) && copy.LastForgeChoice == draft.LastForgeChoice,
-            "draft variety history persists across load");
-        draft.Choose(slot);
+        draft.Pending++; draft.EnsureOffers(); hands++;
+        Check(draft.OfferWeapons.Count(id => !draft.CarriedBindings.ContainsKey(id)) >= 2, "two actual switch choices remain available");
+        Check(draft.Offers.Count(id => Catalogue.ById[id].WeaponLevels > 0) <= 1, "at most one forge");
+        if (draft.SharedForgeTier == 3) Check(!draft.Offers.Any(id => Catalogue.ById[id].WeaponLevels > 0), "max shared forge disappears from pool");
+        int slot = draft.OfferWeapons.FindIndex(id => !draft.CarriedBindings.ContainsKey(id));
+        string kind = draft.OfferWeapons[slot];
+        if (seen.Add(kind)) switches++;
+        draft.Choose(slot); draft.BindWeapon(turn + 1);
+        draft.CarriedBindings.Clear(); draft.CarriedBindings[kind] = new BoundPreview(turn + 1, draft.RewardItemLevel(), 2, draft.Choices);
     }
-    Check(seen.Count >= 7, "same weapon cultivation still receives diverse augment effects");
-    distinctSum += seen.Count;
 }
-Check(cultivationColumns.SetEquals(new[] { 0, 1, 2 }), "cultivation weapon is not pinned to column one");
-Check(varietyForges < varietyHands * .40, "forges are occasional choices instead of every-hand template");
-Console.WriteLine($"PASS variety regression: {varietyHands} cultivation hands, {varietyForges} forge hands, mean {distinctSum / 100d:0.00} distinct selected effects per 20 choices, all 3 cultivation positions; total {checks}");
+Console.WriteLine($"PASS shared progression and switch regression: {hands} hands, {switches} distinct weapon acquisitions across runs; total {checks}");

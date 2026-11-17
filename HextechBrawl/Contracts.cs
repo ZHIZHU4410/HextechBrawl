@@ -23,11 +23,14 @@ public sealed partial class Main
             (target._itemData?.name == null ? "武器" : dc.Lang.Class.t.get(target._itemData.name, null).ToString()) + " Lv." + target.getRawItemLevel();
         int nativeLevel = hero._level.game.isBossRush() ? hero._level.game.bossRush.getItemLevel() : hero._level.map.lootLevel;
         State.OfferedBaseLevel = BalanceRules.RewardLevel(nativeLevel);
+        State.CarriedWeaponKinds = weapons.Select(w => w._itemData.id.ToString()).Distinct().ToList();
         State.CarriedBindings = weapons.Where(w => Bound(w)).GroupBy(w => w._itemData.id.ToString()).ToDictionary(g => g.Key,
             g => { var w = g.OrderByDescending(i => i.permanentId == State.TargetWeaponId).ThenByDescending(i => State.BindingStacks(i.permanentId)).First();
                 return new BoundPreview(w.permanentId, w.getRawItemLevel(), w.getUpgradeLevel(), State.BindingStacks(w.permanentId)); });
         State.PreferredWeaponKind = target != null && Bound(target) ? target._itemData.id.ToString() : State.CarriedBindings.Keys.FirstOrDefault() ?? "";
-        State.ReplacementQuality = Math.Clamp(target?.getUpgradeLevel() ?? 0, 0, 3);
+        State.RefreshArsenal(State.CarriedBindings.Values.Select(v => v.Level).DefaultIfEmpty(1).Max(),
+            State.CarriedBindings.Values.Select(v => v.Quality).DefaultIfEmpty(0).Max());
+        State.ReplacementQuality = Math.Max(State.ArsenalQuality, Math.Clamp(target?.getUpgradeLevel() ?? 0, 0, 3));
         State.DisplayDamagePenalty = DamageTradeoff;
         State.Gold = hero._level.game.data.money; State.Cells = hero.cells; State.Curse = hero.curseCounter;
         State.Wallet = $"金币 {hero._level.game.data.money}   细胞 {hero.cells}   诅咒 {hero.curseCounter}";
@@ -50,7 +53,7 @@ public sealed partial class Main
         State.EnsureWeaponOffers();
         string weaponId = reward && index < State.OfferWeapons.Count ? State.OfferWeapons[index] : "";
         var entry = WeaponPool.Get(weaponId);
-        int baseLevel = State.OfferedBaseLevel;
+        int baseLevel = State.RewardItemLevel(a.WeaponLevels);
         if (reward && (entry == null || !WeaponPool.Allows(entry, State.WeaponColor, State.WeaponCategory)))
         { State.Notice = "目标武器不符合本局池，请重随。"; view.Reject(); Redraw(); return false; }
         var existing = reward ? CarriedWeapons(hero).FirstOrDefault(i => Bound(i) && i._itemData.id.ToString() == weaponId &&
@@ -58,8 +61,7 @@ public sealed partial class Main
         if (existing != null) baseLevel = Math.Max(baseLevel, existing.getRawItemLevel());
         if (reward && existing == null && target?.pairedItem != null)
         { State.Notice = "请先卸下双槽武器，或用W指定另一替换位置。"; view.Reject(); Redraw(); return false; }
-        string error = RunState.SelectionError(a, hero._level.game.data.money, hero.cells, hero.curseCounter,
-            true, baseLevel);
+        string error = State.ChoiceError(a, hero._level.game.data.money, hero.cells, hero.curseCounter);
         if (error.Length > 0)
         {
             State.Notice = error + "；未扣费，可选其他卡或重随。";
@@ -96,9 +98,18 @@ public sealed partial class Main
         if (a.GoldCost > 0) hero.substractMoney(a.GoldCost, Ref<bool>.In(false));
         if (a.CellsCost > 0) hero.substractCells(a.CellsCost, Ref<bool>.In(false));
         if (a.CurseCost > 0) hero.curse(a.CurseCost, "海克斯契约".AsHaxeString(), Ref<bool>.In(true), Ref<bool>.In(false));
-        if (a.WeaponLevels > 0)
+        if (reward)
         {
-            acquired.setItemLevel(Math.Min(30, acquired.getRawItemLevel() + a.WeaponLevels));
+            // 固定共享目标等级，不以旧等级为底反复加数；换新与留旧承接相同进度。
+            int sharedLevel = State.RewardItemLevel();
+            foreach (var w in CarriedWeapons(hero).Where(w => Bound(w)))
+            {
+                w.setItemLevel(Math.Max(w.getRawItemLevel(), sharedLevel));
+                for (int q = w.getUpgradeLevel(); q < State.ReplacementQuality; q++)
+                    w.addAffix("QualityUp".AsHaxeString(), Ref<bool>.In(true));
+            }
+            State.ArsenalLevelFloor = Math.Max(State.ArsenalLevelFloor, sharedLevel);
+            State.ArsenalQuality = Math.Max(State.ArsenalQuality, State.ReplacementQuality);
         }
         foreach (var stat in stats) hero.inventory.add(stat);
         if (a.Id == "gold_loan") hero.addMoney(1000, Ref<bool>.In(false));

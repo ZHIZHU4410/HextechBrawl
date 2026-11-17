@@ -73,9 +73,9 @@ public static class Catalogue
         new("route_fortune", "贪婪商人", 2, Family.Fortune, "本局偏向财富强化。\n每杀额外5金币，所有伤害-10%。", 1)
     ];
     public static readonly Augment[] Contracts = [
-        new("forge_gold", "金币精锻", 1, Family.Assault, "指定携带武器等级+1；红紫绿各+1。\n支付300金币。每次选择均支付。", 999, GoldCost:300, WeaponLevels:1, AllStats:1),
-        new("forge_cells", "细胞熔铸", 2, Family.Arcane, "指定携带武器等级+2；红紫绿各+1。\n支付15细胞。每次选择均支付。", 999, CellsCost:15, WeaponLevels:2, AllStats:1),
-        new("forge_curse", "诅咒锻造", 3, Family.Blood, "指定携带武器等级+3；红紫绿各+1。\n增加10原版诅咒；受伤可能立即死亡。", 999, CurseCost:10, WeaponLevels:3, AllStats:1),
+        new("forge_gold", "金币精锻", 1, Family.Assault, "共享锻造提升至+1档；红紫绿各+1。\n支付300金币。本局每档只提升一次。", 1, GoldCost:300, WeaponLevels:1, AllStats:1),
+        new("forge_cells", "细胞熔铸", 2, Family.Arcane, "共享锻造提升至+2档；红紫绿各+1。\n支付15细胞。本局每档只提升一次。", 1, CellsCost:15, WeaponLevels:2, AllStats:1),
+        new("forge_curse", "诅咒锻造", 3, Family.Blood, "共享锻造提升至+3档；红紫绿各+1。\n增加10诅咒；受伤可能立即死亡。", 1, CurseCost:10, WeaponLevels:3, AllStats:1),
         new("gold_loan", "染血借贷", 1, Family.Fortune, "获得1000金币。\n代价：增加12原版诅咒。", 3, CurseCost:12),
         new("soul_debt", "灵魂透支", 2, Family.Fortune, "获得30细胞。\n代价：本局所有治疗每级降低25%。", 2),
         new("purify", "赎罪契约", 1, Family.Fortress, "减少10原版诅咒，支付600金币。\n代价：本局所有伤害每级降低5%。", 3, GoldCost:600),

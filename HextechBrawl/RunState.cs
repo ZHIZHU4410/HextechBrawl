@@ -4,19 +4,37 @@ namespace HextechBrawl;
 public sealed record BoundPreview(int Id, int Level, int Quality, int Stacks);
 public sealed class RunState
 {
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = 4;
     public List<string> RecentOffers { get; set; } = new();
     public List<string> RecentChoices { get; set; } = new();
     public int LastForgeChoice { get; set; } = -100;
+    public int SharedForgeTier { get; set; }
+    public int ArsenalLevelFloor { get; set; } = 1;
+    public int ArsenalQuality { get; set; }
+    public void RefreshArsenal(int strongestLevel, int strongestQuality)
+    {
+        // 旧局曾经付出的锻造投入保留成共享进度，不再只惠及旧实例。
+        foreach (var a in Catalogue.Contracts.Where(a => a.WeaponLevels > 0 && Rank(a.Id) > 0))
+            SharedForgeTier = Math.Max(SharedForgeTier, a.WeaponLevels);
+        SharedForgeTier = Math.Clamp(SharedForgeTier, 0, 3);
+        ArsenalLevelFloor = Math.Clamp(Math.Max(ArsenalLevelFloor, strongestLevel), 1, 30);
+        ArsenalQuality = Math.Clamp(Math.Max(ArsenalQuality, strongestQuality), 0, 3);
+    }
+    public int RewardItemLevel(int proposedTier = 0) => Math.Min(30, Math.Max(ArsenalLevelFloor,
+        OfferedBaseLevel + Math.Max(SharedForgeTier, proposedTier)));
+    public string ChoiceError(Augment a, int gold, int cells, int curse)
+        => a.WeaponLevels > 0 && a.WeaponLevels <= SharedForgeTier ? "共享锻造已达到该档位，不能重复升级" :
+           Rank(a.Id) >= a.MaxRank ? "该海克斯已满级" : SelectionError(a, gold, cells, curse, true, RewardItemLevel(a.WeaponLevels));
     public string WeaponColor { get; set; } = "";
     public string WeaponCategory { get; set; } = "";
     public string PreferredWeaponKind { get; set; } = "";
+    public List<string> CarriedWeaponKinds { get; set; } = new();
     public Dictionary<string, BoundPreview> CarriedBindings { get; set; } = new();
     public int ReplacementQuality { get; set; }
     public double DisplayDamagePenalty { get; set; } = 1;
     public List<string> OfferWeapons { get; set; } = new();
     public Dictionary<int, int> BoundWeapons { get; set; } = new();
-    public int BindingStacks(int permanentId) => BoundWeapons.TryGetValue(permanentId, out int since) ? Math.Max(0, Choices - since) : 0;
+    public int BindingStacks(int permanentId) => BoundWeapons.ContainsKey(permanentId) ? Choices : 0;
     public void BindWeapon(int permanentId) => BoundWeapons.TryAdd(permanentId, Choices);
     public string PoolLabel => (WeaponColor == "Brutality" ? "红" : WeaponColor == "Tactic" ? "紫" : WeaponColor == "Survival" ? "绿" : "待选颜色") + "/" +
         (WeaponCategory == "melee" ? "近战+盾" : WeaponCategory == "ranged" ? "远程+盾" : "待选分类");
@@ -33,12 +51,15 @@ public sealed class RunState
             if (available.Count == 0) available = matching;
             OfferWeapons[i] = available[(int)(Next() % (uint)available.Count)].Id;
         }
-        // 已保存候选不随W切换而重抽。仅在真正生成新候选时保留一条培养路线。
-        if (PreferredWeaponKind.Length > 0 && pool.Any(w => w.Id == PreferredWeaponKind) && !OfferWeapons.Contains(PreferredWeaponKind))
+        // 新生成的候选至少两项不是当前携带种类；不足两种新类型时按实际池回退。
+        var heldKinds = CarriedWeaponKinds.Concat(CarriedBindings.Keys).ToHashSet();
+        int NovelCount() => OfferWeapons.Count(id => !heldKinds.Contains(id));
+        for (int i = 0; i < OfferWeapons.Count && NovelCount() < 2; i++)
         {
-            var slots = Enumerable.Range(0, Offers.Count).Where(i => Offers[i] != "multishot" ||
-                VolleyCompatibility.Kinds.Contains(PreferredWeaponKind) && WeaponPool.Get(PreferredWeaponKind).Group == 5).ToArray();
-            if (slots.Length > 0) OfferWeapons[slots[(int)(Next() % (uint)slots.Length)]] = PreferredWeaponKind;
+            if (!heldKinds.Contains(OfferWeapons[i])) continue;
+            var alternatives = pool.Where(w => !heldKinds.Contains(w.Id) && !OfferWeapons.Contains(w.Id) &&
+                (Offers[i] != "multishot" || w.Group == 5 && VolleyCompatibility.Kinds.Contains(w.Id))).ToList();
+            if (alternatives.Count > 0) OfferWeapons[i] = alternatives[(int)(Next() % (uint)alternatives.Count)].Id;
         }
     }
     public bool OpeningGranted { get; set; }
@@ -87,7 +108,7 @@ public sealed class RunState
     public static string SelectionError(Augment a, int gold, int cells, int curse, bool weapon, int level)
         => gold < a.GoldCost ? $"金币不足，需要 {a.GoldCost}" : cells < a.CellsCost ? $"细胞不足，需要 {a.CellsCost}" :
            a.WeaponLevels > 0 && !weapon ? "请按W选择一把携带武器" :
-           a.WeaponLevels > 0 && level + a.WeaponLevels > 30 ? "本次升级将超过武器30级上限" :
+           a.WeaponLevels > 0 && level > 30 ? "共享武器等级超过上限" :
            a.Id == "purify" && curse <= 0 ? "没有诅咒，不需要赎罪" : "";
     public bool IsRoute(Family family) => Route == "route_" + family.ToString().ToLowerInvariant();
     public void GrantOpening()
@@ -165,7 +186,7 @@ public sealed class RunState
         // 锻造仅25%尝试加入且最多一张，选过锻造后至少两次普通选择不再出现。
         if (Choices - LastForgeChoice >= 2 && Chance(.25))
         {
-            var forges = Catalogue.Contracts.Where(a => a.WeaponLevels > 0 && Rank(a.Id) < a.MaxRank).ToList();
+            var forges = Catalogue.Contracts.Where(a => a.WeaponLevels > SharedForgeTier && Rank(a.Id) < a.MaxRank).ToList();
             if (forges.Count > 0) Offers.Add(Pick(forges).Id);
         }
         while (Offers.Count < 3)
@@ -208,7 +229,7 @@ public sealed class RunState
     {
         if (Pending <= 0 || index < 0 || index >= Offers.Count) return false;
         var id = Offers[index];
-        if (!Catalogue.ById.TryGetValue(id, out var a) || Rank(id) >= a.MaxRank) return false;
+        if (!Catalogue.ById.TryGetValue(id, out var a) || Rank(id) >= a.MaxRank || a.WeaponLevels > 0 && a.WeaponLevels <= SharedForgeTier) return false;
         if (OpeningPending)
         {
             if (id.StartsWith("color_"))
@@ -223,7 +244,7 @@ public sealed class RunState
             Offers = ParkedOffers; OfferRarity = ParkedRarity; OfferRerolls = ParkedRerolls;
             ParkedOffers = new(); Notice = ""; return true;
         }
-        if (a.WeaponLevels > 0) LastForgeChoice = Choices + 1;
+        if (a.WeaponLevels > 0) { LastForgeChoice = Choices + 1; SharedForgeTier = a.WeaponLevels; }
         RecentChoices = RecentChoices.Append(id).TakeLast(2).ToList();
         Ranks[id] = Rank(id) + 1;
         Choices++; Pending--; Offers.Clear(); OfferWeapons.Clear(); OfferRarity = OfferRerolls = 0;

@@ -1,5 +1,15 @@
 # Changes
 
+## 3.4.0
+- Replaced item-age growth with shared run mastery; newly bound weapons immediately inherit all current layers.
+- Replaced additive reforging with absolute shared +1/+2/+3 forge tiers. Completed/lower tiers cannot be selected repeatedly.
+- Shared earned level floor and normal forge quality with newly obtained bound weapons and catch up carried bound items on confirmation.
+- Preserved legacy high-level investments as an arsenal floor; no direct downgrade of old items.
+- Removed the mandatory current-weapon cultivation slot. New drafts provide at least two not-currently-carried weapon kinds where the legal pool permits.
+- Updated card preview to show switching inheritance and core forge state.
+- Passed 112,904 rule checks, including repeated forge rejection, fixed-depth non-compounding growth, migration and 2,000 switch-draft hands.
+- Runtime inventory integration and gameplay balance remain pending user testing.
+
 ## 3.3.0
 - Removed the mandatory forge card from every draft; forging now has a 25% insertion attempt and a cooldown after selection.
 - Shuffled augment positions and independently randomized the cultivation weapon slot.
