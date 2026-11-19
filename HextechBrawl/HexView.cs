@@ -102,7 +102,7 @@ internal sealed class HexView : IDisposable
         // 方向键移动仅改变焦点，不重新生成卡牌或重播入场动画。
         if (choiceMode && offerSignature == signature) return;
         Background(state, state.OpeningPending ? (state.WeaponColor.Length == 0 ? "开局卷轴：先选武器颜色。双色只需包含该颜色；不允许其他纯色混入。" : "选择本局近战或远程池，两类互斥；盾牌遵守颜色条件并兼容所选池。") :
-            (state.Notice.Length > 0 ? state.Notice : state.Wallet + "  |  池：" + state.PoolLabel + "  |  换新继承共享成长；锻造按档位提升"));
+            (state.Notice.Length > 0 ? state.Notice : state.Wallet + "  |  池：" + state.PoolLabel + "  |  选中武器生成在脚边；装备保持不动"));
         choiceMode = true; offerSignature = signature; confirmChoice = choose;
         for (int i = 0; i < state.Offers.Count; i++)
             MakeSparks(202 + i * 358, 363, Colors[Catalogue.ById[state.Offers[i]].Rarity], i);
@@ -142,10 +142,9 @@ internal sealed class HexView : IDisposable
                 string weaponId = state.OfferWeapons[i];
                 WeaponPreview(card, weaponId, color);
                 Label(card, WeaponName(weaponId), 122, 99, color, .92, 196);
-                state.CarriedBindings.TryGetValue(weaponId, out var bound);
-                int level = Math.Max(bound?.Level ?? 0, state.RewardItemLevel(a.WeaponLevels));
-                string quality = new[] { "普通", "+", "++", "S" }[Math.Clamp(bound?.Quality ?? state.ReplacementQuality, 0, 3)];
-                Label(card, bound == null ? $"换新 Lv.{level} {quality} · 继承{state.Choices + 1}层" : $"保留 Lv.{level} {quality} · 共享{state.Choices + 1}层", 122, 158, Muted, .75, 196);
+                int level = state.RewardItemLevel(a.WeaponLevels);
+                string quality = new[] { "普通", "+", "++", "S" }[Math.Clamp(state.ReplacementQuality, 0, 3)];
+                Label(card, $"生成 Lv.{level} {quality} · 共享{state.Choices + 1}层", 122, 158, Muted, .75, 196);
                 Rect(card, 20, 189, 300, 1, 0x354653);
                 Label(card, a.Description, 20, 203, White, 1, 300);
             }
@@ -166,7 +165,7 @@ internal sealed class HexView : IDisposable
         Button("[R] 重随三项", 34, 555, 180, reroll, !state.OpeningPending && state.Rerolls > 0 && state.OfferRerolls < 3);
         Button("[Tab] 海克斯核心", 230, 555, 220, core);
         Button("[Esc] 暂存选择", 868, 555, 220, exit);
-        Button("[W] 替换 " + (state.TargetWeaponLabel.Length > 24 ? state.TargetWeaponLabel[..24] + "…" : state.TargetWeaponLabel), 466, 555, 386, weapon, !state.OpeningPending);
+        Button("[W] 品质参考 " + (state.TargetWeaponLabel.Length > 24 ? state.TargetWeaponLabel[..24] + "…" : state.TargetWeaponLabel), 466, 555, 386, weapon, !state.OpeningPending);
         Tick(0);
         Resize();
     }

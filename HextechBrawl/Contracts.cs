@@ -56,11 +56,6 @@ public sealed partial class Main
         int baseLevel = State.RewardItemLevel(a.WeaponLevels);
         if (reward && (entry == null || !WeaponPool.Allows(entry, State.WeaponColor, State.WeaponCategory)))
         { State.Notice = "目标武器不符合本局池，请重随。"; view.Reject(); Redraw(); return false; }
-        var existing = reward ? CarriedWeapons(hero).FirstOrDefault(i => Bound(i) && i._itemData.id.ToString() == weaponId &&
-            State.CarriedBindings.TryGetValue(weaponId, out var preview) && i.permanentId == preview.Id) : null;
-        if (existing != null) baseLevel = Math.Max(baseLevel, existing.getRawItemLevel());
-        if (reward && existing == null && target?.pairedItem != null)
-        { State.Notice = "请先卸下双槽武器，或用W指定另一替换位置。"; view.Reject(); Redraw(); return false; }
         string error = State.ChoiceError(a, hero._level.game.data.money, hero.cells, hero.curseCounter);
         if (error.Length > 0)
         {
@@ -77,22 +72,16 @@ public sealed partial class Main
         for (int n = 0; n < a.AllStats; n++)
             foreach (string id in new[] { "BrutalityUp", "TacticUp", "SurvivalUp" })
                 stats.Add(InventItem.Class.fromItem.Invoke(id.AsHaxeString(), null));
-        var acquired = reward ? existing ?? InventItem.Class.fromItem.Invoke(weaponId.AsHaxeString(), baseLevel) : null;
-        if (reward && existing == null)
+        var acquired = reward ? InventItem.Class.fromItem.Invoke(weaponId.AsHaxeString(), baseLevel) : null;
+        if (reward)
             for (int q = acquired.getUpgradeLevel(); q < State.ReplacementQuality; q++)
                 acquired.addAffix("QualityUp".AsHaxeString(), Ref<bool>.In(true));
         if (!State.Choose(index)) return false;
         if (reward)
         {
-            if (existing != null) acquired.setItemLevel(Math.Max(baseLevel, acquired.getRawItemLevel()));
-            else if (target == null) hero.inventory.add(acquired);
-            else
-            {
-                hero.inventory.replace(target, acquired);
-                target.posID = -1;
-                var oldDrop = new dc.en.inter.ItemDrop(hero._level, hero.cx, hero.cy, target, true, Ref<bool>.In(false));
-                oldDrop.init(); oldDrop.onDropAsLoot();
-            }
+            // 每次确认都生成卡上武器，不替换、不合并玩家当前装备。
+            var rewardDrop = new dc.en.inter.ItemDrop(hero._level, hero.cx, hero.cy, acquired, true, Ref<bool>.In(false));
+            rewardDrop.init(); rewardDrop.onDropAsLoot();
             State.BindWeapon(acquired.permanentId);
         }
         if (a.GoldCost > 0) hero.substractMoney(a.GoldCost, Ref<bool>.In(false));

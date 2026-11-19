@@ -130,3 +130,11 @@ for (uint seed = 1; seed <= 100; seed++)
     }
 }
 Console.WriteLine($"PASS shared progression and switch regression: {hands} hands, {switches} distinct weapon acquisitions across runs; total {checks}");
+
+Check(BalanceRules.SafeFinalDamage((double)int.MaxValue * 10, 0, -1) == BalanceRules.SafeDamageCeiling, "large hero damage saturates instead of wrapping to non-positive int");
+Check(BalanceRules.SafeFinalDamage(double.PositiveInfinity, 0, -1) == BalanceRules.SafeDamageCeiling, "infinite scaled damage is bounded");
+Check(BalanceRules.SafeFinalDamage(double.NaN, 0, -1) == 0, "NaN cannot corrupt health math");
+Check(BalanceRules.SafeFinalDamage(1e30, 0, 5000) == 5000 && BalanceRules.SafeFinalDamage(1e30, 0, 0) == 0, "boss damage cap and zero protection preserved");
+Check(BalanceRules.SafeFinalDamage(12345, 12, -1) == 12357, "normal finite damage math preserved");
+Check(BalanceRules.SafeFinalDamage(100, -10000, -1) == 0, "negative damage never heals enemy through int overflow");
+Console.WriteLine("PASS damage conversion regression; total " + checks);

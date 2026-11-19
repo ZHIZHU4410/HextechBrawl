@@ -1,5 +1,13 @@
 # Changes
 
+## 3.5.0
+- Generate the card's weapon as a new bound item drop at the player, leaving equipped weapons and backpack slots untouched.
+- Removed automatic replacement and same-name merge; W now chooses only the normal quality reference.
+- Guarded unsafe scaled player damage conversions before 32-bit integer casts; saturate high values and preserve native damage caps and boss protection phases.
+- Added overflow, infinity, NaN and zero-cap regression coverage; 112,910 checks pass.
+- Added an owner-checked updater targeting the existing Workshop item 3841855747 only.
+- Collector encounter and in-game drop behavior have not been reproduced in this revision; runtime verification remains pending.
+
 ## 3.4.0
 - Replaced item-age growth with shared run mastery; newly bound weapons immediately inherit all current layers.
 - Replaced additive reforging with absolute shared +1/+2/+3 forge tiers. Completed/lower tiers cannot be selected repeatedly.

@@ -43,7 +43,8 @@ public sealed partial class Main(ModInfo info) : ModBase(info), IOnFrameUpdate, 
         Hook_Hero.heal += OnHealing;
         Hook_Weapon.prepare += OnPrepare;
         Hook__AttackUtils.hit += OnHit;
-        Logger.Information("[HextechBrawl] v3.4.0 loaded: shared arsenal progression; switch without reset; diverse drafts and independent cultivation; double bound damage; reforge and safe choices; phase/volley; native loot scaling; weapon icon previews and bound weapon pools; F6 core, 1/2/3 select, R reroll");
+        Hook__AttackUtils.computeFinalDmg += SafeDamage;
+        Logger.Information("[HextechBrawl] v3.5.0 loaded: reward drops and safe final damage; shared arsenal progression; switch without reset; diverse drafts and independent cultivation; double bound damage; reforge and safe choices; phase/volley; native loot scaling; weapon icon previews and bound weapon pools; F6 core, 1/2/3 select, R reroll");
     }
 
     private bool EnsureRun(Hero hero)
@@ -244,6 +245,7 @@ public sealed partial class Main(ModInfo info) : ModBase(info), IOnFrameUpdate, 
         Hook_Hero.heal -= OnHealing;
         Hook_Weapon.prepare -= OnPrepare;
         Hook__AttackUtils.hit -= OnHit;
+        Hook__AttackUtils.computeFinalDmg -= SafeDamage;
         ResetCombat();
     }
 }
